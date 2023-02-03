@@ -5,7 +5,7 @@ M0PDock uses DIO mode for spi flash, so flashing and starting need some extra op
 
 If you ignored, either failed on flashing or can not start.
 
-## Preoperations
+## PREPARATION
 
 First of all, please refer to `utils/flash/bl616/flashcfg_list.csv` to find out which conf file is associated with the `flash ID` fetched from `BL LAB DEV CUBE`.
 
@@ -47,4 +47,14 @@ Download it and read its document.
 ## DOC
 
 [DS and RM](https://dl.sipeed.com/shareURL/Maix-Zero/M0P/6_Chip_Manual)
+
+## EXAMPLES
+
+Refer to folder examples, **helloworld** and others are nearly all compatible with M0SDock, so just goto which example you want and type `make` or `make ninja`, then `xxx.bin` will appear in the folder `build/build_out`.
+
+## DOWNLOAD
+
+[Here](https://bl-mcu-sdk.readthedocs.io/zh_CN/latest/get_started/devcube.html) is the way how you can download it.
+
+MUST AFTER [PREPARATION](#preparation).
 
