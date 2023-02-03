@@ -34,3 +34,17 @@ First of all, please refer to `utils/flash/bl616/flashcfg_list.csv` to find out 
 | 0b4017 | GD25Q80E_c84014.conf |        1        |
 
 Now can normally flash your firmware and run it.
+
+
+## SDK
+
+Official [MCU SDK](https://github.com/bouffalolab/bl_mcu_sdk).
+
+Download it and read its document.
+
+[Here](https://bl-mcu-sdk.readthedocs.io/zh_CN/latest/api_reference/peripherals/index.html) is the API of its peripherals.
+
+## DOC
+
+[DS and RM](https://dl.sipeed.com/shareURL/Maix-Zero/M0P/6_Chip_Manual)
+
