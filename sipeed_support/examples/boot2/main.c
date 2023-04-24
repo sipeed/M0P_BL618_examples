@@ -195,7 +195,7 @@ int main(void)
                 // void (*app_main)(void) = (void (*)(void))FLASH_XIP_BASE;
                 // app_main();
                 bflb_jump_encrypted_app(0,
-                                        supported_firmwares[curr_select].firmware_address,
+                                        supported_firmwares[curr_select].firmware_address + 0x1000,
                                         supported_firmwares[curr_select].firmware_address + 0x40000);
                 printf("never reach\r\n");
 
