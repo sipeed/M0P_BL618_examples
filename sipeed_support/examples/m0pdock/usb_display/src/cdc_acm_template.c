@@ -226,7 +226,7 @@ void lcd_display_loop(void)
 void lcd_setDir(uint8_t dir)
 {
     while (lcd_draw_is_busy()) {}
-    lcd_set_dir(dir, 0);
+    lcd_set_dir(dir, 0 == dir);
     x_start = y_start = 0;
     if (dir == 2) {
         y_start = 160;
