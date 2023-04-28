@@ -120,7 +120,7 @@ void usbd_cdc_acm_bulk_out(uint8_t ep, uint32_t nbytes)
 {
     ep_rx_flag ^= 1;
     uint8_t *ptr = read_buffer[ep_rx_flag];
-    USB_LOG_RAW("actual out len:%d\r\n", nbytes);
+    // USB_LOG_RAW("actual out len:%d\r\n", nbytes);
     if (nbytes == 2) {
         if (0x32ff == *(uint16_t *)ptr) {
             pixel_idx = 0;
@@ -136,7 +136,7 @@ void usbd_cdc_acm_bulk_out(uint8_t ep, uint32_t nbytes)
         }
         memcpy(&screen_buf[!screen_idx][pixel_idx], ptr, nbytes);
         pixel_idx += nbytes;
-        USB_LOG_RAW("pixel_idx/size:%d/%u\r\n", pixel_idx, sizeof(screen_buf[0]));
+        // USB_LOG_RAW("pixel_idx/size:%d/%u\r\n", pixel_idx, sizeof(screen_buf[0]));
         if (pixel_idx == sizeof(screen_buf[0])) {
             pixel_idx = 0;
             screen_idx ^= 1;
@@ -155,7 +155,7 @@ void usbd_cdc_acm_bulk_out(uint8_t ep, uint32_t nbytes)
 
 void usbd_cdc_acm_bulk_in(uint8_t ep, uint32_t nbytes)
 {
-    USB_LOG_RAW("actual in len:%d\r\n", nbytes);
+    // USB_LOG_RAW("actual in len:%d\r\n", nbytes);
 
     if ((nbytes % CDC_MAX_MPS) == 0 && nbytes) {
         /* send zlp */
@@ -209,9 +209,28 @@ void cdc_acm_init(void)
     usbd_initialize();
 }
 
-void lcd_display_loop(void)
+static uint16_t x_start = 0;
+static uint16_t y_start = 0;
+static void lcd_draw_async(uint16_t x, uint16_t y)
 {
     if (!lcd_draw_is_busy()) {
-        lcd_draw_picture_nonblocking(0, 0, 320 - 1, 320 - 1, screen_buf[screen_idx]);
+        lcd_draw_picture_nonblocking(x, y, x + 320 - 1, y + 320 - 1, screen_buf[screen_idx]);
+    }
+}
+
+void lcd_display_loop(void)
+{
+    lcd_draw_async(x_start, y_start);
+}
+
+void lcd_setDir(uint8_t dir)
+{
+    while (lcd_draw_is_busy()) {}
+    lcd_set_dir(dir, 0);
+    x_start = y_start = 0;
+    if (dir == 2) {
+        y_start = 160;
+    } else if (dir == 3) {
+        x_start = 160;
     }
 }

@@ -13,15 +13,25 @@
 #define DBG_TAG "MAIN"
 #include "log.h"
 
+static TimerHandle_t display_timer_handle;
+static TaskHandle_t button_task_handle;
+
+extern void shell_init_with_task(struct bflb_device_s *shell);
 extern void cdc_acm_init(void);
 extern void lcd_display_loop(void);
-extern void shell_init_with_task(struct bflb_device_s *shell);
+extern void lcd_setDir(uint8_t dir);
 
 static uint8_t lcd_dir;
 
 static void vDisplayTimer(TimerHandle_t xTimer)
 {
-    // lcd_set_dir(lcd_dir, 0);
+    static uint8_t dir = 0;
+    if (lcd_dir != dir) {
+        dir = lcd_dir;
+        lcd_setDir(dir);
+        printf("Changeed dir to %u\r\n", dir);
+    }
+
     lcd_display_loop();
 }
 
@@ -30,23 +40,22 @@ static void button_task(void *pvParameters)
     struct bflb_device_s *gpio;
     gpio = bflb_device_get_by_name("gpio");
     bflb_gpio_init(gpio, GPIO_PIN_3, GPIO_INPUT | GPIO_FLOAT | GPIO_SMT_EN | GPIO_DRV_0);
-    bool push_button;
-    uint32_t push_times;
+    bool is_button_pushed;
+    uint32_t pushed_times;
     uint8_t dir;
 
     lcd_dir = dir = 0;
     while (1) {
-        push_times = 0;
+        pushed_times = 0;
         do {
             vTaskDelay(pdMS_TO_TICKS(10));
-            push_button = (0 == bflb_gpio_read(gpio, GPIO_PIN_3));
-            push_times += push_button;
-        } while (push_button);
-        if (push_times) {
+            is_button_pushed = (0 == bflb_gpio_read(gpio, GPIO_PIN_3));
+            pushed_times += is_button_pushed;
+        } while (is_button_pushed);
+        if (pushed_times) {
             dir = (dir + 1) % 4;
             lcd_dir = dir;
-            // lcd_set_dir(dir, 0);
-            // printf("Change dir to %u\r\n", dir);
+            printf("Changing dir to %u\r\n", dir);
         }
     }
 
@@ -74,11 +83,11 @@ int main(void)
     uart0 = bflb_device_get_by_name("uart0");
     shell_init_with_task(uart0);
 
+    display_timer_handle = xTimerCreate("display_timer", pdMS_TO_TICKS(10), pdTRUE, NULL, vDisplayTimer);
     xTimerStart(
-        xTimerCreate("display_timer", pdMS_TO_TICKS(10), pdTRUE, NULL, vDisplayTimer),
+        display_timer_handle,
         pdMS_TO_TICKS(50));
 
-    xTaskHandle button_task_handle;
     xTaskCreate(button_task, (char *)"producer_task", 512, NULL, configMAX_PRIORITIES - 3, &button_task_handle);
 
     vTaskStartScheduler();
