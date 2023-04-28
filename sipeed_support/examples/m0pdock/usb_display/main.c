@@ -5,6 +5,8 @@
 #include "usbh_core.h"
 #include "bflb_mtimer.h"
 #include "bflb_gpio.h"
+#include "bflb_pwm_v2.h"
+#include "bflb_clock.h"
 #include "board.h"
 #include "shell.h"
 
@@ -40,9 +42,25 @@ static void button_task(void *pvParameters)
     struct bflb_device_s *gpio;
     gpio = bflb_device_get_by_name("gpio");
     bflb_gpio_init(gpio, GPIO_PIN_3, GPIO_INPUT | GPIO_FLOAT | GPIO_SMT_EN | GPIO_DRV_0);
+    bflb_gpio_init(gpio, GPIO_PIN_2, GPIO_FUNC_PWM0 | GPIO_ALTERNATE | GPIO_PULLDOWN | GPIO_SMT_EN | GPIO_DRV_1);
+
     bool is_button_pushed;
     uint32_t pushed_times;
     uint8_t dir;
+
+    struct bflb_device_s *pwm;
+    pwm = bflb_device_get_by_name("pwm_v2_0");
+
+    /* period = .XCLK / .clk_div / .period = 40MHz / 40 / 1000 = 1KHz */
+    bflb_pwm_v2_init(pwm,
+                     &(struct bflb_pwm_v2_config_s){
+                         .clk_source = BFLB_SYSTEM_XCLK,
+                         .clk_div = 40,
+                         .period = 1000,
+                     });
+    bflb_pwm_v2_channel_set_threshold(pwm, PWM_CH2, 100, 500); /* duty = (500-100)/1000 = 40% */
+    bflb_pwm_v2_channel_positive_start(pwm, PWM_CH2);
+    bflb_pwm_v2_start(pwm);
 
     lcd_dir = dir = 0;
     while (1) {
@@ -53,9 +71,13 @@ static void button_task(void *pvParameters)
             pushed_times += is_button_pushed;
         } while (is_button_pushed);
         if (pushed_times) {
-            dir = (dir + 1) % 4;
-            lcd_dir = dir;
-            printf("Changing dir to %u\r\n", dir);
+            // dir = (dir + 1) % 4;
+            // lcd_dir = dir;
+            // printf("Changing dir to %u\r\n", dir);
+            dir = (dir + 1) % 11;
+            uint16_t map[] = { 0, 2, 4, 8, 16, 32, 63, 126, 251, 501, 1000 };
+            bflb_pwm_v2_channel_set_threshold(pwm, PWM_CH2, 100, 100 + map[dir]);
+            printf("Changing pwm duty to %u%\r\n", dir * 10);
         }
     }
 
