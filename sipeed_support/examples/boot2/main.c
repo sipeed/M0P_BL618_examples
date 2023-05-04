@@ -11,8 +11,7 @@
 #include "coroutine.h"
 
 #define BTN              GPIO_PIN_2
-#define LED1             GPIO_PIN_28
-#define LED2             GPIO_PIN_27
+#define LED1             GPIO_PIN_16
 
 #define FLASH_BLOCK_SIZE 4096
 #define MAX_INIT_TIME    300
@@ -26,8 +25,6 @@ static void led_blink(uint8_t value, uint64_t delay_ms)
 
 #define LED1_ON  bflb_gpio_reset(gpio, LED1)
 #define LED1_OFF bflb_gpio_set(gpio, LED1)
-#define LED2_ON  bflb_gpio_reset(gpio, LED2)
-#define LED2_OFF bflb_gpio_set(gpio, LED2)
 
     scrBegin;
     gpio = bflb_device_get_by_name("gpio");
@@ -45,15 +42,9 @@ static void led_blink(uint8_t value, uint64_t delay_ms)
             } else {
                 LED1_OFF;
             }
-            if ((value >> 1) & 0x1) {
-                LED2_ON;
-            } else {
-                LED2_OFF;
-            }
         } else {
             /* all off */
             LED1_OFF;
-            LED2_OFF;
         }
         scrReturnV;
     }
@@ -64,10 +55,8 @@ static struct {
     const uint32_t firmware_address;
     const char *const firmware_name;
 } supported_firmwares[] = {
-    { 0x10000, " cklink" },
-    { 0x50000, "daplink" },
-    { 0x90000, "  uart4" },
-    { 0xd0000, "     la" },
+    { 0x10000, "MaixPlay-U4" },
+    { 0x50000, "Pika Python" },
 };
 
 static volatile bool flag_long_pressed = false;
@@ -100,7 +89,7 @@ static void gpio_isr(int irq, void *arg)
                     selector_next(pSelector);
                     printf("[gpio_isr]select:\r\n");
                     uint8_t curr_select = selector_idx(pSelector);
-                    printf("\t(%u)%s@0x%x\r\n", curr_select, supported_firmwares[curr_select].firmware_name, supported_firmwares[curr_select].firmware_address);
+                    printf("\t(%u)%s@0x%x\r\n", curr_select, supported_firmwares[curr_select].firmware_name, 0 * supported_firmwares[curr_select].firmware_address);
                 }
             }
         }
@@ -139,7 +128,6 @@ int main(void)
 
     struct bflb_device_s *gpio = bflb_device_get_by_name("gpio");
     bflb_gpio_init(gpio, LED1, GPIO_OUTPUT | GPIO_PULLUP | GPIO_SMT_EN | GPIO_DRV_0);
-    bflb_gpio_init(gpio, LED2, GPIO_OUTPUT | GPIO_PULLUP | GPIO_SMT_EN | GPIO_DRV_0);
     // bflb_gpio_init(gpio, BTN, GPIO_INPUT | GPIO_PULLDOWN | GPIO_SMT_EN | GPIO_DRV_0);
 
     bflb_gpio_int_init(gpio, BTN, GPIO_INT_TRIG_MODE_SYNC_FALLING_RISING_EDGE);
@@ -188,15 +176,15 @@ int main(void)
                     bflb_flash_erase(selector_in_flash_address, FLASH_BLOCK_SIZE);
                     bflb_flash_write(selector_in_flash_address, (uint8_t *)&selector, sizeof(selector));
                 }
-                // __disable_irq();
-                // bflb_l1c_dcache_clean_invalidate_all();
-                // bflb_l1c_icache_invalid_all();
-                // bflb_flash_set_cache(true, true, 0, supported_firmwares[curr_select].firmware_address);
-                // void (*app_main)(void) = (void (*)(void))FLASH_XIP_BASE;
-                // app_main();
-                bflb_jump_encrypted_app(0,
-                                        supported_firmwares[curr_select].firmware_address + 0x1000,
-                                        supported_firmwares[curr_select].firmware_address + 0x40000);
+                __disable_irq();
+                bflb_l1c_dcache_clean_invalidate_all();
+                bflb_l1c_icache_invalid_all();
+                bflb_flash_set_cache(true, true, 0, supported_firmwares[curr_select].firmware_address + 0x1000);
+                void (*app_main)(void) = (void (*)(void))FLASH_XIP_BASE;
+                app_main();
+                // bflb_jump_encrypted_app(0,
+                //                         supported_firmwares[curr_select].firmware_address + 0x1000,
+                //                         supported_firmwares[curr_select].firmware_address + 0x40000);
                 printf("never reach\r\n");
 
                 state = STATE_MAX;

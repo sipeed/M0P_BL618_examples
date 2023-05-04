@@ -99,7 +99,7 @@ static void button_task(void *pvParameters)
         uint8_t lcd_bright;
     } maixplayU4_config_t;
 #define FLASH_BLOCK_SIZE        4096
-#define CONFIG_IN_FLASH_ADDRESS (0x100000 - FLASH_BLOCK_SIZE)
+#define CONFIG_IN_FLASH_ADDRESS (0x50000 - FLASH_BLOCK_SIZE)
     maixplayU4_config_t maixplayU4_config;
     bflb_flash_read(CONFIG_IN_FLASH_ADDRESS, (uint8_t *)&maixplayU4_config, sizeof(maixplayU4_config_t));
     if (maixplayU4_config.lcd_bright > 10 ||

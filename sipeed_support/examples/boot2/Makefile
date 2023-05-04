@@ -5,8 +5,8 @@ SIPEED_SUPPORT ?= $(BL_SDK_BASE)/../sipeed_support
 export BL_SDK_BASE
 
 CHIP ?= bl616
-BOARD ?= bl616dk
-BOARD_DIR ?= 
+BOARD ?= m0pdock
+BOARD_DIR ?= $(SIPEED_SUPPORT)/boards
 CROSS_COMPILE ?= riscv64-unknown-elf-
 
 # add custom cmake definition
