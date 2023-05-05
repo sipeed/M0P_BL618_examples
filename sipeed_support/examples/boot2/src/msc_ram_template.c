@@ -213,8 +213,109 @@ int usbd_msc_sector_read(uint32_t sector, uint8_t *buffer, uint32_t length)
     return 0;
 }
 
+#include "bflb_flash.h"
+static void write_to_flash(uint8_t *buffer, uint32_t length, uint32_t target_addr, bool sync)
+{
+    static uint8_t flash_buf[BLOCK_SIZE];
+    static uint32_t buf_idx = 0;
+    static uint32_t flash_target_addr = 0;
+
+    bool is_contiguous = target_addr == flash_target_addr + buf_idx;
+    // not contiguous
+    if (!is_contiguous) {
+        if (buf_idx) {
+            {
+                // write flash_buf to flash_target_addr
+                bflb_flash_erase(flash_target_addr, BLOCK_SIZE);
+                bflb_flash_write(flash_target_addr, flash_buf, BLOCK_SIZE);
+            }
+            buf_idx = 0;
+        }
+        buf_idx = target_addr % BLOCK_SIZE;
+        flash_target_addr = target_addr - buf_idx;
+        if (buf_idx) {
+            {
+                // read flash_target_addr to flash_buf
+                bflb_flash_read(flash_target_addr, flash_buf, BLOCK_SIZE);
+            }
+        }
+    }
+
+    uint32_t remained = (length + buf_idx > BLOCK_SIZE) ? (length + buf_idx - BLOCK_SIZE) : 0;
+
+    memcpy(&flash_buf[buf_idx], buffer, length - remained);
+    {
+        // write flash_buf to flash_target_addr
+        bflb_flash_erase(flash_target_addr, BLOCK_SIZE);
+        bflb_flash_write(flash_target_addr, flash_buf, BLOCK_SIZE);
+    }
+    flash_target_addr += BLOCK_SIZE;
+    buf_idx = 0;
+
+    buf_idx = remained % BLOCK_SIZE;
+    {
+        // write buffer[length-remained : length-buf_idx] to flash_target_addr
+        bflb_flash_erase(flash_target_addr, remained - buf_idx);
+        bflb_flash_write(flash_target_addr, buffer + length - remained, remained - buf_idx);
+    }
+    flash_target_addr += remained / BLOCK_SIZE;
+
+    if (buf_idx) {
+        {
+            // read flash_target_addr to flash_buf
+            bflb_flash_read(flash_target_addr, flash_buf, BLOCK_SIZE);
+        }
+        memcpy(flash_buf, buffer + length - buf_idx, buf_idx);
+    }
+
+    if (sync) {
+        if (buf_idx) {
+            {
+                // write flash_buf to flash_target_addr
+                bflb_flash_erase(flash_target_addr, BLOCK_SIZE);
+                bflb_flash_write(flash_target_addr, flash_buf, BLOCK_SIZE);
+            }
+            buf_idx = 0;
+        }
+    }
+}
+
+#include "uf2.h"
+
 int usbd_msc_sector_write(uint32_t sector, uint8_t *buffer, uint32_t length)
 {
+    // printf("[MSC] write sector: %u, buffer: %p, length: %u\r\n", sector, buffer, length);
+    if (uf2_is_uf2_block(((uf2_block_t *)buffer))) {
+        static uint8_t flash_buf_tmp[2][BLOCK_SIZE];
+        static uint8_t flash_buf_tmp_idx_curr = 0;
+        static uint32_t flash_target_addr = 0;
+
+        for (uf2_block_t *puf2_blk = (uf2_block_t *)buffer; puf2_blk < (uf2_block_t *)(buffer + length); puf2_blk += 1) {
+            if (UF2_FLAG_FAMILY_ID_PRESENT & puf2_blk->flags &&
+                FAMILY_ID_MAIXPLAYU4 == puf2_blk->family_id) {
+                // printf("[UF2] UF2HEADER:\r\n"
+                //        "\tflags:\t%#8x\r\n"
+                //        "\target_addr:\t%#8x\r\n"
+                //        "\tpayload_size:\t%u\r\n"
+                //        "\tblock_no:\t%u\r\n"
+                //        "\tnum_blocks:\t%u\r\n"
+                //        "\tfamily_id:\t%#8x\r\n"
+                //        "\r\n",
+                //        puf2_blk->flags, puf2_blk->target_addr, puf2_blk->payload_size,
+                //        puf2_blk->block_no, puf2_blk->num_blocks, puf2_blk->family_id);
+                printf("[flash] %04u/%04u%3s\r", puf2_blk->block_no + 1, puf2_blk->num_blocks,
+                       puf2_blk->block_no + 1 == puf2_blk->num_blocks ?
+                           " OK" :
+                           (char *[]){ ".  ", ".. ", "..." }[puf2_blk->block_no / 5 % 3]);
+
+                write_to_flash(puf2_blk->data, puf2_blk->payload_size,
+                               0x10000 /*FLASH_ADDR*/ + puf2_blk->target_addr,
+                               puf2_blk->block_no == puf2_blk->num_blocks - 1);
+            }
+        }
+        return 0;
+    }
+
     if (sector < BLOCK_COUNT)
         memcpy(mass_block[sector], buffer, length);
     return 0;

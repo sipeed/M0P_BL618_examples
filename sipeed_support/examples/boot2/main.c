@@ -119,9 +119,6 @@ int main(void)
 
         extern void msc_ram_init(void);
         msc_ram_init();
-
-        // handle uf2 firmware
-
         while (1) {}
     }
 
@@ -176,7 +173,7 @@ int main(void)
                 led_blink(curr_select, 1 /* ms */);
             } break;
             case STATE_STARTING_AUTO:
-                printf("Auto ");
+                printf("Auto \r");
                 if (bflb_mtimer_get_time_ms() - last_operate_time < 1.5f * AUTO_START_TIME) {
                     led_blink(0b11, 300 /* ms */);
                     break;
@@ -189,16 +186,30 @@ int main(void)
                     bflb_flash_erase(selector_in_flash_address, FLASH_BLOCK_SIZE);
                     bflb_flash_write(selector_in_flash_address, (uint8_t *)&selector, sizeof(selector));
                 }
-                __disable_irq();
-                bflb_l1c_dcache_clean_invalidate_all();
-                bflb_l1c_icache_invalid_all();
-                bflb_flash_set_cache(true, true, 0, supported_firmwares[curr_select].firmware_address + 0x1000);
-                void (*app_main)(void) = (void (*)(void))FLASH_XIP_BASE;
-                app_main();
-                // bflb_jump_encrypted_app(0,
-                //                         supported_firmwares[curr_select].firmware_address + 0x1000,
-                //                         supported_firmwares[curr_select].firmware_address + 0x40000);
+
+                uint8_t flag;
+                bflb_flash_read(supported_firmwares[curr_select].firmware_address + 0x78, &flag, 1);
+                printf("flag: %02x\r\n", flag);
+
+                if (0x00 == flag) {
+                    __disable_irq();
+                    bflb_l1c_dcache_clean_invalidate_all();
+                    bflb_l1c_icache_invalid_all();
+                    bflb_flash_set_cache(true, true, 0, supported_firmwares[curr_select].firmware_address + 0x1000);
+                    void (*app_main)(void) = (void (*)(void))FLASH_XIP_BASE;
+                    app_main();
+                } else if (0x04 == flag) {
+                    bflb_jump_encrypted_app(0,
+                                            supported_firmwares[curr_select].firmware_address + 0x1000,
+                                            curr_select == selector.__max - 1 ?
+                                                0x200000 - supported_firmwares[curr_select].firmware_address - 0x1000 :
+                                                supported_firmwares[curr_select + 1].firmware_address - supported_firmwares[curr_select].firmware_address - 0x1000);
+                }
                 printf("never reach\r\n");
+                printf("Entering OTA......\r\n");
+
+                extern void msc_ram_init(void);
+                msc_ram_init();
 
                 state = STATE_MAX;
             } break;
