@@ -311,6 +311,9 @@ int usbd_msc_sector_write(uint32_t sector, uint8_t *buffer, uint32_t length)
                 write_to_flash(puf2_blk->data, puf2_blk->payload_size,
                                0x10000 /*FLASH_ADDR*/ + puf2_blk->target_addr,
                                puf2_blk->block_no == puf2_blk->num_blocks - 1);
+
+                extern bool need_reboot_after_upgrade;
+                need_reboot_after_upgrade = puf2_blk->block_no == puf2_blk->num_blocks - 1;
             }
         }
         return 0;

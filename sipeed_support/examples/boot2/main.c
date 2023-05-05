@@ -107,6 +107,7 @@ enum {
 
 #include "bflb_flash.h"
 #include "bflb_l1c.h"
+bool need_reboot_after_upgrade = false;
 void ATTR_TCM_SECTION bflb_jump_encrypted_app(uint8_t index, uint32_t flash_addr, uint32_t len);
 int main(void)
 {
@@ -115,11 +116,22 @@ int main(void)
     bflb_gpio_init(gpio, GPIO_PIN_3, GPIO_INPUT | GPIO_PULLDOWN | GPIO_SMT_EN | GPIO_DRV_0);
 
     if (unlikely(!bflb_gpio_read(gpio, GPIO_PIN_3))) {
+    __ota:
         printf("Entering OTA......\r\n");
 
         extern void msc_ram_init(void);
         msc_ram_init();
-        while (1) {}
+        bool really_need_reboot_after_upgrade = false;
+        while (1) {
+            if (really_need_reboot_after_upgrade) {
+                bflb_mtimer_delay_ms(50);
+                if (need_reboot_after_upgrade) {
+                    GLB_SW_System_Reset();
+                }
+            }
+            really_need_reboot_after_upgrade = need_reboot_after_upgrade;
+            bflb_mtimer_delay_ms(500);
+        }
     }
 
     uint64_t last_operate_time = bflb_mtimer_get_time_ms();
@@ -206,10 +218,7 @@ int main(void)
                                                 supported_firmwares[curr_select + 1].firmware_address - supported_firmwares[curr_select].firmware_address - 0x1000);
                 }
                 printf("never reach\r\n");
-                printf("Entering OTA......\r\n");
-
-                extern void msc_ram_init(void);
-                msc_ram_init();
+                goto __ota;
 
                 state = STATE_MAX;
             } break;
