@@ -111,6 +111,20 @@ void ATTR_TCM_SECTION bflb_jump_encrypted_app(uint8_t index, uint32_t flash_addr
 int main(void)
 {
     board_init();
+    struct bflb_device_s *gpio = bflb_device_get_by_name("gpio");
+    bflb_gpio_init(gpio, GPIO_PIN_3, GPIO_INPUT | GPIO_PULLDOWN | GPIO_SMT_EN | GPIO_DRV_0);
+
+    if (unlikely(!bflb_gpio_read(gpio, GPIO_PIN_3))) {
+        printf("Entering OTA......\r\n");
+
+        extern void msc_ram_init(void);
+        msc_ram_init();
+
+        // handle uf2 firmware
+
+        while (1) {}
+    }
+
     uint64_t last_operate_time = bflb_mtimer_get_time_ms();
 
     selector_t selector;
@@ -126,7 +140,6 @@ int main(void)
 
     uint8_t started_select = selector_idx(&selector);
 
-    struct bflb_device_s *gpio = bflb_device_get_by_name("gpio");
     bflb_gpio_init(gpio, LED1, GPIO_OUTPUT | GPIO_PULLUP | GPIO_SMT_EN | GPIO_DRV_0);
     // bflb_gpio_init(gpio, BTN, GPIO_INPUT | GPIO_PULLDOWN | GPIO_SMT_EN | GPIO_DRV_0);
 
