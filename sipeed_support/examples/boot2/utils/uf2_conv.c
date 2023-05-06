@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "uf2.h"
@@ -8,7 +9,7 @@
 int main(int argc, char **argv)
 {
     if (argc < 2) {
-        fprintf(stderr, "USAGE: %s file.bin [file.uf2]\n", argv[0]);
+        fprintf(stderr, "USAGE: %s file.bin [file.uf2] [is_pika]\n", argv[0]);
         return 1;
     }
     FILE *f = fopen(argv[1], "rb");
@@ -36,7 +37,8 @@ int main(int argc, char **argv)
     blk.family_id = FAMILY_ID_MAIXPLAYU4;
     blk.num_blocks = (sz + (sizeof(blk.data) - 1)) / sizeof(blk.data);
 
-    blk.target_addr = 0;
+    blk.target_addr = (argc > 3) ? 0x40000 : 0;
+    printf("Starting from 0x%x\n", blk.target_addr);
     for (blk.block_no = 0; blk.block_no < blk.num_blocks; blk.block_no++) {
         blk.payload_size = fread(blk.data, 1, sizeof(blk.data), f);
         fwrite(&blk, sizeof(blk), 1, fout);

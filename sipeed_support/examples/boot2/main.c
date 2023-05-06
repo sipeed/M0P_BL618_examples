@@ -7,6 +7,8 @@
 #include "bflb_mtimer.h"
 #include "board.h"
 
+#include "lcd.h"
+
 #include "selector.h"
 #include "coroutine.h"
 
@@ -53,7 +55,7 @@ static void led_blink(uint8_t value, uint64_t delay_ms)
 
 static struct {
     const uint32_t firmware_address;
-    const char *const firmware_name;
+    const char firmware_name[12];
 } supported_firmwares[] = {
     { 0x10000, "MaixPlay-U4" },
     { 0x50000, "Pika Python" },
@@ -90,6 +92,13 @@ static void gpio_isr(int irq, void *arg)
                     printf("[gpio_isr]select:\r\n");
                     uint8_t curr_select = selector_idx(pSelector);
                     printf("\t(%u)%s@0x%x\r\n", curr_select, supported_firmwares[curr_select].firmware_name, 0 * supported_firmwares[curr_select].firmware_address);
+
+                    lcd_color_t colors[ARRAY_SIZE(supported_firmwares)] = {
+                        LCD_COLOR_RGB(0x00, 0x00, 0xff),
+                        LCD_COLOR_RGB(0x00, 0xff, 0x00),
+                    };
+
+                    lcd_clear(colors[curr_select]);
                 }
             }
         }
@@ -105,6 +114,8 @@ enum {
     STATE_MAX,
 };
 
+#include "fw_header.h"
+
 #include "bflb_flash.h"
 #include "bflb_l1c.h"
 bool need_reboot_after_upgrade = false;
@@ -113,6 +124,36 @@ int main(void)
 {
     board_init();
     struct bflb_device_s *gpio = bflb_device_get_by_name("gpio");
+
+    {
+        struct bootheader_t bh;
+
+        bflb_gpio_init(gpio, BTN, GPIO_OUTPUT | GPIO_SMT_EN | GPIO_DRV_0);
+        bflb_gpio_set(gpio, BTN);
+        lcd_init();
+
+        lcd_clear(LCD_COLOR_RGB(0xff, 0xff, 0xff));
+        lcd_draw_rectangle(0, LCD_H / 2 - 16, LCD_W - 1, LCD_H / 2 + 48, LCD_COLOR_RGB(0xff, 0x00, 0x00));
+
+        for (uint32_t i = 0; i < ARRAY_SIZE(supported_firmwares); i++) {
+            bflb_flash_read(supported_firmwares[i].firmware_address, (void *)&bh, sizeof(struct bootheader_t));
+
+            uint32_t fw_offset = supported_firmwares[i].firmware_address + bh.basic_cfg.group_image_offset;
+            uint32_t fw_length = bh.basic_cfg.img_len_cnt;
+
+            uint8_t version_string[16];
+            bflb_flash_read(fw_offset + fw_length, (void *)version_string, sizeof(version_string));
+
+            lcd_draw_str_ascii16(16,
+                                 LCD_H / 2 - 16 + 4 + 16 * i, LCD_COLOR_RGB(0x00, 0x00, 0xff), LCD_COLOR_RGB(0xff, 0xff, 0xff),
+                                 (void *)supported_firmwares[i].firmware_name, strlen(supported_firmwares[i].firmware_name));
+            lcd_draw_str_ascii16(16 + 8 * (sizeof(supported_firmwares[i].firmware_name)),
+                                 LCD_H / 2 - 16 + 4 + 16 * i, LCD_COLOR_RGB(0x00, 0x00, 0xff), LCD_COLOR_RGB(0xff, 0xff, 0xff),
+                                 version_string, strlen((void *)version_string));
+        }
+        bflb_mtimer_delay_ms(500);
+    }
+
     bflb_gpio_init(gpio, GPIO_PIN_3, GPIO_INPUT | GPIO_PULLDOWN | GPIO_SMT_EN | GPIO_DRV_0);
 
     if (unlikely(!bflb_gpio_read(gpio, GPIO_PIN_3))) {
@@ -193,30 +234,33 @@ int main(void)
             case STATE_STARTING_MANUAL: {
                 printf("Starting:\r\n"
                        "\t(%u)%s@0x%x\r\n",
-                       curr_select, supported_firmwares[curr_select].firmware_name, supported_firmwares[curr_select].firmware_address);
+                       curr_select, supported_firmwares[curr_select].firmware_name, 0 * supported_firmwares[curr_select].firmware_address);
                 if (started_select != curr_select) {
                     bflb_flash_erase(selector_in_flash_address, FLASH_BLOCK_SIZE);
                     bflb_flash_write(selector_in_flash_address, (uint8_t *)&selector, sizeof(selector));
                 }
 
-                uint8_t flag;
-                bflb_flash_read(supported_firmwares[curr_select].firmware_address + 0x78, &flag, 1);
-                printf("flag: %02x\r\n", flag);
+                {
+                    struct bootheader_t fw_h;
+                    bflb_flash_read(supported_firmwares[curr_select].firmware_address, (void *)&fw_h, sizeof(struct bootheader_t));
 
-                if (0x00 == flag) {
-                    __disable_irq();
-                    bflb_l1c_dcache_clean_invalidate_all();
-                    bflb_l1c_icache_invalid_all();
-                    bflb_flash_set_cache(true, true, 0, supported_firmwares[curr_select].firmware_address + 0x1000);
-                    void (*app_main)(void) = (void (*)(void))FLASH_XIP_BASE;
-                    app_main();
-                } else if (0x04 == flag) {
-                    bflb_jump_encrypted_app(0,
-                                            supported_firmwares[curr_select].firmware_address + 0x1000,
-                                            curr_select == selector.__max - 1 ?
-                                                0x200000 - supported_firmwares[curr_select].firmware_address - 0x1000 :
-                                                supported_firmwares[curr_select + 1].firmware_address - supported_firmwares[curr_select].firmware_address - 0x1000);
+                    uint8_t flag = fw_h.basic_cfg.encrypt_type;
+                    printf("flag: %02x\r\n", flag);
+                    uint32_t fw_offset = supported_firmwares[curr_select].firmware_address + fw_h.basic_cfg.group_image_offset;
+                    uint32_t fw_length = fw_h.basic_cfg.img_len_cnt;
+
+                    if (0b00 == flag) {
+                        __disable_irq();
+                        bflb_l1c_dcache_clean_invalidate_all();
+                        bflb_l1c_icache_invalid_all();
+                        bflb_flash_set_cache(true, true, 0, fw_offset);
+                        void (*app_main)(void) = (void (*)(void))FLASH_XIP_BASE;
+                        app_main();
+                    } else if (0b01 == flag) {
+                        bflb_jump_encrypted_app(0, fw_offset, fw_length);
+                    }
                 }
+
                 printf("never reach\r\n");
                 goto __ota;
 
@@ -228,7 +272,6 @@ int main(void)
     }
 }
 
-#include "fw_header.h"
 #include "bflb_sf_ctrl.h"
 #if defined(BL702) || defined(BL702L)
 #define bflb_sf_ctrl_get_aes_region(addr, r) (addr + SF_CTRL_AES_REGION_OFFSET + (r)*0x100)
