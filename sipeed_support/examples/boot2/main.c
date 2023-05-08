@@ -113,6 +113,36 @@ enum {
 #include "bflb_flash.h"
 #include "bflb_l1c.h"
 bool need_reboot_after_upgrade = false;
+static volatile char *OTA_FIRMWARE_STATES[ARRAY_SIZE(supported_firmwares)] = { "Wait...", "Wait..." };
+void ota_firmware_update_state(uint32_t blk_curr, uint32_t blk_total, uint32_t target_addr)
+{
+    static char states[ARRAY_SIZE(supported_firmwares)][8];
+
+    uint32_t curr_state = blk_curr * 100 / blk_total;
+
+    // printf("curr: %3u%%, addr: %x\r\n", curr_state, target_addr);
+    if (curr_state % 4)
+        return;
+
+    int curr_firmware = -1;
+    for (uint32_t i = ARRAY_SIZE(supported_firmwares) - 1; i >= 0; i--) {
+        if (target_addr >= supported_firmwares[i].firmware_address) {
+            curr_firmware = i;
+            break;
+        }
+    }
+    if (-1 == curr_firmware)
+        return;
+
+    if (curr_state >= 0 && curr_state < 100) {
+        snprintf(states[curr_firmware], sizeof(states[0]), "%3u%%%3s",
+                 curr_state,
+                 (char *[]){ ".  ", ".. ", "..." }[blk_curr / 5 % 3]);
+        OTA_FIRMWARE_STATES[curr_firmware] = states[curr_firmware];
+    } else if (curr_state == 100) {
+        OTA_FIRMWARE_STATES[curr_firmware] = "Finish.";
+    }
+}
 void ATTR_TCM_SECTION bflb_jump_encrypted_app(uint8_t index, uint32_t flash_addr, uint32_t len);
 int main(void)
 {
@@ -255,6 +285,12 @@ int main(void)
                 msc_ram_init();
                 bool really_need_reboot_after_upgrade = false;
                 while (1) {
+                    for (uint32_t i = 0; i < selector.__max; i++) {
+                        lcd_draw_str_ascii16(LCD_W - 8 * 8,
+                                             LCD_H / 2 - 16 + 4 + 16 * i, LCD_COLOR_RGB(0xff, 0x00, 0xff), LCD_COLOR_RGB(0xff, 0xff, 0xff),
+                                             (void *)OTA_FIRMWARE_STATES[i], strlen(OTA_FIRMWARE_STATES[i]));
+                    }
+
                     if (really_need_reboot_after_upgrade) {
                         bflb_mtimer_delay_ms(50);
                         if (need_reboot_after_upgrade) {
@@ -262,7 +298,6 @@ int main(void)
                         }
                     }
                     really_need_reboot_after_upgrade = need_reboot_after_upgrade;
-                    bflb_mtimer_delay_ms(500);
                 }
             } break;
             case STATE_MAX: {

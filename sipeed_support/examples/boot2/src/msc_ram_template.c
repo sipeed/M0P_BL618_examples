@@ -286,10 +286,6 @@ int usbd_msc_sector_write(uint32_t sector, uint8_t *buffer, uint32_t length)
 {
     // printf("[MSC] write sector: %u, buffer: %p, length: %u\r\n", sector, buffer, length);
     if (uf2_is_uf2_block(((uf2_block_t *)buffer))) {
-        static uint8_t flash_buf_tmp[2][BLOCK_SIZE];
-        static uint8_t flash_buf_tmp_idx_curr = 0;
-        static uint32_t flash_target_addr = 0;
-
         for (uf2_block_t *puf2_blk = (uf2_block_t *)buffer; puf2_blk < (uf2_block_t *)(buffer + length); puf2_blk += 1) {
             if (UF2_FLAG_FAMILY_ID_PRESENT & puf2_blk->flags &&
                 FAMILY_ID_MAIXPLAYU4 == puf2_blk->family_id) {
@@ -307,6 +303,8 @@ int usbd_msc_sector_write(uint32_t sector, uint8_t *buffer, uint32_t length)
                        puf2_blk->block_no + 1 == puf2_blk->num_blocks ?
                            " OK" :
                            (char *[]){ ".  ", ".. ", "..." }[puf2_blk->block_no / 5 % 3]);
+                extern void ota_firmware_update_state(uint32_t blk_curr, uint32_t blk_total, uint32_t target_addr);
+                ota_firmware_update_state(puf2_blk->block_no + 1, puf2_blk->num_blocks, 0x10000 /*FLASH_ADDR*/ + puf2_blk->target_addr);
 
                 write_to_flash(puf2_blk->data, puf2_blk->payload_size,
                                0x10000 /*FLASH_ADDR*/ + puf2_blk->target_addr,
