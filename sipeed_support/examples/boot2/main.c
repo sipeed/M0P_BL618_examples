@@ -92,13 +92,6 @@ static void gpio_isr(int irq, void *arg)
                     printf("[gpio_isr]select:\r\n");
                     uint8_t curr_select = selector_idx(pSelector);
                     printf("\t(%u)%s@0x%x\r\n", curr_select, supported_firmwares[curr_select].firmware_name, 0 * supported_firmwares[curr_select].firmware_address);
-
-                    lcd_color_t colors[ARRAY_SIZE(supported_firmwares)] = {
-                        LCD_COLOR_RGB(0x00, 0x00, 0xff),
-                        LCD_COLOR_RGB(0x00, 0xff, 0x00),
-                    };
-
-                    lcd_clear(colors[curr_select]);
                 }
             }
         }
@@ -111,6 +104,7 @@ enum {
     STATE_CONFIGURING = 0,
     STATE_STARTING_AUTO,
     STATE_STARTING_MANUAL,
+    STATE_OTA,
     STATE_MAX,
 };
 
@@ -151,28 +145,7 @@ int main(void)
                                  LCD_H / 2 - 16 + 4 + 16 * i, LCD_COLOR_RGB(0x00, 0x00, 0xff), LCD_COLOR_RGB(0xff, 0xff, 0xff),
                                  version_string, strlen((void *)version_string));
         }
-        bflb_mtimer_delay_ms(500);
-    }
-
-    bflb_gpio_init(gpio, GPIO_PIN_3, GPIO_INPUT | GPIO_PULLDOWN | GPIO_SMT_EN | GPIO_DRV_0);
-
-    if (unlikely(!bflb_gpio_read(gpio, GPIO_PIN_3))) {
-    __ota:
-        printf("Entering OTA......\r\n");
-
-        extern void msc_ram_init(void);
-        msc_ram_init();
-        bool really_need_reboot_after_upgrade = false;
-        while (1) {
-            if (really_need_reboot_after_upgrade) {
-                bflb_mtimer_delay_ms(50);
-                if (need_reboot_after_upgrade) {
-                    GLB_SW_System_Reset();
-                }
-            }
-            really_need_reboot_after_upgrade = need_reboot_after_upgrade;
-            bflb_mtimer_delay_ms(500);
-        }
+        // bflb_mtimer_delay_ms(500);
     }
 
     uint64_t last_operate_time = bflb_mtimer_get_time_ms();
@@ -190,6 +163,7 @@ int main(void)
 
     uint8_t started_select = selector_idx(&selector);
 
+    bflb_gpio_init(gpio, GPIO_PIN_3, GPIO_INPUT | GPIO_SMT_EN | GPIO_DRV_0);
     bflb_gpio_init(gpio, LED1, GPIO_OUTPUT | GPIO_PULLUP | GPIO_SMT_EN | GPIO_DRV_0);
     // bflb_gpio_init(gpio, BTN, GPIO_INPUT | GPIO_PULLDOWN | GPIO_SMT_EN | GPIO_DRV_0);
 
@@ -211,7 +185,10 @@ int main(void)
         uint8_t curr_select = selector_idx(&selector);
         switch (state) {
             case STATE_CONFIGURING: {
-                if (last_select != curr_select) {
+                if (unlikely(!bflb_gpio_read(gpio, GPIO_PIN_3))) {
+                    /* enter ota */
+                    state = STATE_OTA;
+                } else if (last_select != curr_select) {
                     /* next auto start */
                     last_operate_time = bflb_mtimer_get_time_ms();
                     last_select = curr_select;
@@ -224,6 +201,11 @@ int main(void)
                 }
 
                 led_blink(curr_select, 1 /* ms */);
+                for (uint32_t i = 0; i < selector.__max; i++) {
+                    lcd_draw_str_ascii16(16 - 12,
+                                         LCD_H / 2 - 16 + 4 + 16 * i, LCD_COLOR_RGB(0xff, 0x00, 0x00), LCD_COLOR_RGB(0xff, 0xff, 0xff),
+                                         (void *)((i == curr_select) ? "*" : " "), 1);
+                }
             } break;
             case STATE_STARTING_AUTO:
                 printf("Auto \r");
@@ -262,9 +244,26 @@ int main(void)
                 }
 
                 printf("never reach\r\n");
-                goto __ota;
+                state = STATE_OTA;
+            } break;
+            case STATE_OTA: {
+                bflb_gpio_init(gpio, BTN, GPIO_OUTPUT | GPIO_SMT_EN | GPIO_DRV_0);
+                bflb_gpio_set(gpio, BTN);
+                printf("Entering OTA......\r\n");
 
-                state = STATE_MAX;
+                extern void msc_ram_init(void);
+                msc_ram_init();
+                bool really_need_reboot_after_upgrade = false;
+                while (1) {
+                    if (really_need_reboot_after_upgrade) {
+                        bflb_mtimer_delay_ms(50);
+                        if (need_reboot_after_upgrade) {
+                            GLB_SW_System_Reset();
+                        }
+                    }
+                    really_need_reboot_after_upgrade = need_reboot_after_upgrade;
+                    bflb_mtimer_delay_ms(500);
+                }
             } break;
             case STATE_MAX: {
             } break;
