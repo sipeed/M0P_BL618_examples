@@ -12,7 +12,7 @@
 #include "selector.h"
 #include "coroutine.h"
 
-#define BTN              GPIO_PIN_2
+#define BTN              GPIO_PIN_3
 #define LED1             GPIO_PIN_16
 
 #define FLASH_BLOCK_SIZE 4096
@@ -148,17 +148,30 @@ int main(void)
 {
     board_init();
     struct bflb_device_s *gpio = bflb_device_get_by_name("gpio");
+    bflb_gpio_init(gpio, BTN, GPIO_INPUT | GPIO_SMT_EN | GPIO_DRV_0);
+    bool need_enter_OTA = !bflb_gpio_read(gpio, BTN);
 
     {
         struct bootheader_t bh;
 
-        bflb_gpio_init(gpio, BTN, GPIO_OUTPUT | GPIO_SMT_EN | GPIO_DRV_0);
-        bflb_gpio_set(gpio, BTN);
+        bflb_gpio_init(gpio, GPIO_PIN_2, GPIO_OUTPUT | GPIO_SMT_EN | GPIO_DRV_0);
+        bflb_gpio_set(gpio, GPIO_PIN_2);
         lcd_init();
 
-        lcd_clear(LCD_COLOR_RGB(0xff, 0xff, 0xff));
-        lcd_draw_rectangle(0, LCD_H / 2 - 16, LCD_W - 1, LCD_H / 2 + 48, LCD_COLOR_RGB(0xff, 0x00, 0x00));
+        lcd_clear(LCD_COLOR_RGB(0x00, 0x00, 0x00));
 
+        lcd_draw_str_ascii16(16, 16,
+                             LCD_COLOR_RGB(0xff, 0x00, 0x00), LCD_COLOR_RGB(0x00, 0x00, 0x00),
+                             "TAP side buttons to SWITCH firmware", 35);
+
+        lcd_draw_str_ascii16(16, 16 + 16,
+                             LCD_COLOR_RGB(0xff, 0x00, 0xff), LCD_COLOR_RGB(0x00, 0x00, 0x00),
+                             "RESET with side buttons pressed will enter OTA", 46);
+
+        lcd_draw_rectangle(0, LCD_H / 2 - 16, LCD_W - 1, LCD_H / 2 + 48, LCD_COLOR_RGB(0xff, 0x00, 0x00));
+        lcd_draw_str_ascii16(16,
+                             LCD_H / 2 - 16 - 4 - 16, LCD_COLOR_RGB(0xff, 0x00, 0x00), LCD_COLOR_RGB(0x00, 0x00, 0x00),
+                             "BOOT", 4);
         for (uint32_t i = 0; i < ARRAY_SIZE(supported_firmwares); i++) {
             bflb_flash_read(supported_firmwares[i].firmware_address, (void *)&bh, sizeof(struct bootheader_t));
 
@@ -169,10 +182,10 @@ int main(void)
             bflb_flash_read(fw_offset + fw_length, (void *)version_string, sizeof(version_string));
 
             lcd_draw_str_ascii16(16,
-                                 LCD_H / 2 - 16 + 4 + 16 * i, LCD_COLOR_RGB(0x00, 0x00, 0xff), LCD_COLOR_RGB(0xff, 0xff, 0xff),
+                                 LCD_H / 2 - 16 + 4 + 16 * i, LCD_COLOR_RGB(0x00, 0x00, 0xff), LCD_COLOR_RGB(0x00, 0x00, 0x00),
                                  (void *)supported_firmwares[i].firmware_name, strlen(supported_firmwares[i].firmware_name));
             lcd_draw_str_ascii16(16 + 8 * (sizeof(supported_firmwares[i].firmware_name)),
-                                 LCD_H / 2 - 16 + 4 + 16 * i, LCD_COLOR_RGB(0x00, 0x00, 0xff), LCD_COLOR_RGB(0xff, 0xff, 0xff),
+                                 LCD_H / 2 - 16 + 4 + 16 * i, LCD_COLOR_RGB(0x00, 0x00, 0xff), LCD_COLOR_RGB(0x00, 0x00, 0x00),
                                  version_string, strlen((void *)version_string));
         }
         // bflb_mtimer_delay_ms(500);
@@ -193,9 +206,7 @@ int main(void)
 
     uint8_t started_select = selector_idx(&selector);
 
-    bflb_gpio_init(gpio, GPIO_PIN_3, GPIO_INPUT | GPIO_SMT_EN | GPIO_DRV_0);
     bflb_gpio_init(gpio, LED1, GPIO_OUTPUT | GPIO_PULLUP | GPIO_SMT_EN | GPIO_DRV_0);
-    // bflb_gpio_init(gpio, BTN, GPIO_INPUT | GPIO_PULLDOWN | GPIO_SMT_EN | GPIO_DRV_0);
 
     bflb_gpio_int_init(gpio, BTN, GPIO_INT_TRIG_MODE_SYNC_FALLING_RISING_EDGE);
     bflb_gpio_int_mask(gpio, BTN, false);
@@ -215,7 +226,7 @@ int main(void)
         uint8_t curr_select = selector_idx(&selector);
         switch (state) {
             case STATE_CONFIGURING: {
-                if (unlikely(!bflb_gpio_read(gpio, GPIO_PIN_3))) {
+                if (unlikely(need_enter_OTA)) {
                     /* enter ota */
                     state = STATE_OTA;
                 } else if (last_select != curr_select) {
@@ -233,7 +244,7 @@ int main(void)
                 led_blink(curr_select, 1 /* ms */);
                 for (uint32_t i = 0; i < selector.__max; i++) {
                     lcd_draw_str_ascii16(16 - 12,
-                                         LCD_H / 2 - 16 + 4 + 16 * i, LCD_COLOR_RGB(0xff, 0x00, 0x00), LCD_COLOR_RGB(0xff, 0xff, 0xff),
+                                         LCD_H / 2 - 16 + 4 + 16 * i, LCD_COLOR_RGB(0xff, 0x00, 0x00), LCD_COLOR_RGB(0x00, 0x00, 0x00),
                                          (void *)((i == curr_select) ? "*" : " "), 1);
                 }
             } break;
@@ -277,17 +288,22 @@ int main(void)
                 state = STATE_OTA;
             } break;
             case STATE_OTA: {
-                bflb_gpio_init(gpio, BTN, GPIO_OUTPUT | GPIO_SMT_EN | GPIO_DRV_0);
-                bflb_gpio_set(gpio, BTN);
                 printf("Entering OTA......\r\n");
-
+                lcd_draw_str_ascii16(16,
+                                     LCD_H / 2 - 16 - 4 - 16, LCD_COLOR_RGB(0x00, 0x00, 0x00), LCD_COLOR_RGB(0x00, 0x00, 0x00),
+                                     "    ", 4);
+                lcd_draw_str_ascii16(LCD_W - 8 * 8,
+                                     LCD_H / 2 - 16 - 4 - 16, LCD_COLOR_RGB(0xff, 0x00, 0xff), LCD_COLOR_RGB(0x00, 0x00, 0x00),
+                                     "OTA", 3);
+                bflb_gpio_int_mask(gpio, BTN, true);
+                bflb_gpio_deinit(gpio, BTN);
                 extern void msc_ram_init(void);
                 msc_ram_init();
                 bool really_need_reboot_after_upgrade = false;
                 while (1) {
                     for (uint32_t i = 0; i < selector.__max; i++) {
                         lcd_draw_str_ascii16(LCD_W - 8 * 8,
-                                             LCD_H / 2 - 16 + 4 + 16 * i, LCD_COLOR_RGB(0xff, 0x00, 0xff), LCD_COLOR_RGB(0xff, 0xff, 0xff),
+                                             LCD_H / 2 - 16 + 4 + 16 * i, LCD_COLOR_RGB(0xff, 0x00, 0xff), LCD_COLOR_RGB(0x00, 0x00, 0x00),
                                              (void *)OTA_FIRMWARE_STATES[i], strlen(OTA_FIRMWARE_STATES[i]));
                     }
 
