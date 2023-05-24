@@ -15,7 +15,7 @@ Refer to this repo [bouffalo_sdk](https://github.com/bouffalolab/bouffalo_sdk), 
 After that, clone this repo and keep going on.
 
 ```shell
-git clone git@github.com:sipeed/M0P_BL618_examples.git && cd "$(basename "$_" .git)"
+git clone https://github.com/sipeed/M0P_BL618_examples.git && cd "$(basename "$_" .git)"
 git submodule update --init
 ```
 
@@ -45,12 +45,10 @@ make flash COMX=/dev/ttyACMx # or COMxx if you are on Windows
 
 Examples in the official SDK also can be tested. But you have pay attention on the Makefile in every example:
 
-- `CHIP` MUST be `bl616`
+- `CHIP` MUST be `bl618`
 
 - `BOARD` MUST be set to `m0pdock`
 
 - `BOARD_DIR` MUST be set to `/path_to_this_repo_in_your_computer/sipeed_support/boards`
 
 Then `make` or  `make ninja` and `make flash COMX=xxx` just like the above.
-
-
