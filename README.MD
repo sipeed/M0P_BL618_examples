@@ -51,4 +51,12 @@ Examples in the official SDK also can be tested. But you have pay attention on t
 
 - `BOARD_DIR` MUST be set to `/path_to_this_repo_in_your_computer/sipeed_support/boards`
 
+example,
+
+```makefile
+BOARD ?= m0pdock
+SIPEED_SUPPORT ?= $(realpath $(BL_SDK_BASE)/../sipeed_support)
+BOARD_DIR ?= $(SIPEED_SUPPORT)/boards
+```
+
 Then `make` or  `make ninja` and `make flash COMX=xxx` just like the above.
