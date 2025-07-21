@@ -8,7 +8,7 @@
 static uint8_t gpio_led_pins[] = {
     GPIO_PIN_0,
     GPIO_PIN_1,
-    GPIO_PIN_2,
+    // GPIO_PIN_2,
     GPIO_PIN_3,
 
     GPIO_PIN_6,
@@ -39,28 +39,41 @@ static uint8_t gpio_led_pins[] = {
     GPIO_PIN_33,
     GPIO_PIN_34,
 };
-
+#include "bl616_glb_gpio.h"
 int main(void)
 {
     board_init();
     struct bflb_device_s *gpio = bflb_device_get_by_name("gpio");
 
+    bflb_gpio_init(gpio, GPIO_PIN_2, GPIO_INPUT | GPIO_SMT_EN);
     for (size_t idx = 0; idx < sizeof(gpio_led_pins) / sizeof(gpio_led_pins[0]);
          idx++)
-        bflb_gpio_init(gpio, gpio_led_pins[idx],
-                       GPIO_OUTPUT | GPIO_PULLUP | GPIO_SMT_EN | GPIO_DRV_0);
+        GLB_GPIO_Set_HZ(gpio_led_pins[idx]);
 
+    int count = 0;
     while (1) {
-        LOG_I("gpio set\r\n");
-        for (size_t idx = 0; idx < sizeof(gpio_led_pins) / sizeof(gpio_led_pins[0]);
-             idx++)
-            bflb_gpio_set(gpio, gpio_led_pins[idx]);
-        bflb_mtimer_delay_ms(500);
+        static bool last_state_btn = 0;
+        bool curr_state_btn;
+        curr_state_btn = GLB_GPIO_Read(GPIO_PIN_2);
+        bool state_btn_pushed = last_state_btn && !curr_state_btn;
+        last_state_btn = curr_state_btn;
 
-        LOG_I("gpio reset\r\n");
-        for (size_t idx = 0; idx < sizeof(gpio_led_pins) / sizeof(gpio_led_pins[0]);
-             idx++)
-            bflb_gpio_reset(gpio, gpio_led_pins[idx]);
-        bflb_mtimer_delay_ms(500);
+        if (state_btn_pushed) {
+            count += 1;
+            if (count & 1) {
+                LOG_I("HZ gpio set\r\n");
+                for (size_t idx = 0; idx < sizeof(gpio_led_pins) / sizeof(gpio_led_pins[0]);
+                     idx++) {
+                    GLB_GPIO_Set_HZ(gpio_led_pins[idx]);
+                }
+            } else {
+                LOG_I("low gpio set\r\n");
+                for (size_t idx = 0; idx < sizeof(gpio_led_pins) / sizeof(gpio_led_pins[0]);
+                     idx++) {
+                    bflb_gpio_init(gpio, gpio_led_pins[idx],
+                                   GPIO_INPUT | /*GPIO_PULLDOWN |*/ GPIO_SMT_EN | GPIO_DRV_0);
+                }
+            }
+        }
     }
 }
